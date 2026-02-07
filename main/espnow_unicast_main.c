@@ -93,7 +93,6 @@ static void example_espnow_send_cb(const esp_now_send_info_t *info, esp_now_send
 
 static void example_espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *data, int len)
 {
-    ESP_LOGI(TAG, "Recv Callback was called.");
     example_espnow_event_t evt;
     example_espnow_event_recv_cb_t *recv_cb = &evt.info.recv_cb;
     uint8_t * mac_addr = recv_info->src_addr;
@@ -187,7 +186,6 @@ uint8_t add_peer(uint8_t* mac_addr, bool encrypt)
         free(peer);
         return 1;
     } else {
-        ESP_LOGI(TAG, "Already known peer.");
         return 0;
     }
 }
@@ -215,15 +213,12 @@ void handle_aodv_msg(const uint8_t* src_addr,
 
     switch (data[0]) {
         case AODV_RREQ:
-            ESP_LOGI(TAG, "Received a RREQ.");
             aodv_handle_rreq(src_addr, (aodv_rreq_t*)data);
             break;
         case AODV_RREP:
-            ESP_LOGI(TAG, "Received a RREP.");
             aodv_handle_rrep(src_addr, (aodv_rrep_t*)data);
             break;
         case AODV_RERR:
-            ESP_LOGI(TAG, "Received a RERR.");
             aodv_handle_rerr(src_addr, (aodv_rerr_t*)data);
             break;
     }
@@ -254,65 +249,15 @@ static void beacon_task(void* pvParameter) {
         ESP_LOGI(TAG, "Sending beacon...");
         if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
             ESP_LOGE(TAG, "Send error");
-            example_espnow_deinit(send_param);
+            free(send_param->buffer);
+            free(send_param);
             vTaskDelete(NULL);
         }
     }
 }
 
-static void send_rreq_task(void* pvParameter) {
-    static uint32_t rreq_id = 0;
-    static uint32_t local_seq_num = 0;
 
-    ESP_LOGI(TAG, "Sending RREQ Message.");
-    example_espnow_send_param_t *send_param;
-    send_param = malloc(sizeof(example_espnow_send_param_t));
-    if (send_param == NULL) {
-        ESP_LOGE(TAG, "Malloc send parameter fail");
-        esp_now_deinit();
-    }
-    memset(send_param, 0, sizeof(example_espnow_send_param_t));
-    send_param->len = sizeof(example_espnow_data_t) + sizeof(aodv_rreq_t);
-    send_param->buffer = malloc(send_param->len);
-    if (send_param->buffer == NULL) {
-        ESP_LOGE(TAG, "Malloc send buffer fail");
-        free(send_param);
-        esp_now_deinit();
-    }
-    example_espnow_data_t *buf = (example_espnow_data_t *)send_param->buffer;
-
-
-    aodv_rreq_t rreq = {
-        .type = AODV_RREQ,
-        .hop_count = 0,
-        .rreq_id = rreq_id++,
-        .src_seq = ++local_seq_num,
-        .dest_seq = 0 // TODO: must be taken from the old entry in routing table if it is already there
-    };
-    // esp_wifi_get_mac(WIFI_IF_STA, rreq.src);
-    memcpy(rreq.src, local_mac, ESP_NOW_ETH_ALEN);
-    // set the final destination
-    memcpy(rreq.dest, (uint8_t*)pvParameter, 6);
-    memcpy(buf->payload, &rreq, sizeof(rreq));
-
-
-    // memcpy(buf->payload, "HELLO THIS IS A RREQ MESSAGE", 28);
-    memcpy(send_param->dest_mac, broadcast_mac, ESP_NOW_ETH_ALEN);
-    example_espnow_data_prepare(send_param);
-
-    // vTaskDelay(2000 / portTICK_PERIOD_MS);
-    ESP_LOGI(TAG, "Sending beacon...");
-    if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
-        ESP_LOGE(TAG, "Send error");
-        example_espnow_deinit(send_param);
-        vTaskDelete(NULL);
-    }
-    free(send_param->buffer);
-    free(send_param);
-    vTaskDelete(NULL);
-}
-
-static void example_espnow_task(void *pvParameter)
+static void main_task(void *pvParameter)
 {
     example_espnow_event_t evt;
     uint16_t recv_seq = 0;
@@ -324,13 +269,7 @@ static void example_espnow_task(void *pvParameter)
     esp_err_t err = esp_wifi_get_mac(WIFI_IF_STA, local_mac);
 
     while (true) {
-        // if (local_mac[0] != other_mac[0]) {
-        //     ESP_LOGI(TAG, "Sending RREQ to find a route to "MACSTR"", MAC2STR(other_mac));
-        //     aodv_send_rreq_2((example_espnow_send_param_t *) pvParameter);
-        //     // send_broadcast(pvParameter);
-        // }
         if (xQueueReceive(aodv_rx_queue, &evt, 100/portTICK_PERIOD_MS) == pdTRUE) {
-            ESP_LOGI(TAG, "Read a message from the queue...");
             example_espnow_event_recv_cb_t *recv_cb = &evt.info.recv_cb;
             uint8_t* payload = NULL;
 
@@ -349,10 +288,10 @@ static void example_espnow_task(void *pvParameter)
                 if (is_new_peer != 0) {
                     uint8_t* mac_addr = malloc(ESP_NOW_ETH_ALEN);
                     memcpy(mac_addr, recv_cb->mac_addr, ESP_NOW_ETH_ALEN);
-                    ESP_LOGI(TAG, "Sending RREQ to find a route to "MACSTR"", MAC2STR(recv_cb->mac_addr));
-                    // xTaskCreatePinnedToCore(send_rreq_task, "send_rreq_task", 8192, mac_addr, 5, NULL, 0);
-                    xTaskCreatePinnedToCore(aodv_send_rreq, "aodv_send_rreq", 8192, mac_addr, 5, NULL, 0);
-                    // aodv_send_rreq(recv_cb->mac_addr);
+                    ESP_LOGI(TAG, "Broadcasting RREQ to find a route to "MACSTR"", MAC2STR(recv_cb->mac_addr));
+                    // xTaskCreatePinnedToCore(aodv_send_rreq, "aodv_send_rreq", 4096, mac_addr, 5, NULL, 0);
+                    aodv_send_rreq(mac_addr);
+                    free(mac_addr);
                 }
 
                 if (payload[0] == AODV_RREQ) {
@@ -373,7 +312,7 @@ static void example_espnow_task(void *pvParameter)
                 if (payload[0] == AODV_RREP) {
                     handle_aodv_msg(recv_cb->mac_addr, payload, recv_cb->data_len - sizeof(example_espnow_data_t));
                     aodv_rrep_t* rrep = (aodv_rrep_t*) payload;
-                    ESP_LOGI(TAG, "RREP >>> Type: %d | Hop: %d | ID: %" PRIu32 " | Dest: "MACSTR" (Seq: %" PRIu32 ") | Origin: "MACSTR" ",
+                    ESP_LOGI(TAG, "RREP >>> Type: %d | Hop: %d | Dest: "MACSTR" (Seq: %" PRIu32 ") | Origin: "MACSTR" ",
                         rrep->type,
                         rrep->hop_count,
                         MAC2STR(rrep->dest),
@@ -386,13 +325,6 @@ static void example_espnow_task(void *pvParameter)
             }
             free(payload);
         }
-
-        // if (xQueueReceive(aodv_tx_queue, &evt, 0) == pdTRUE) {
-        //     ESP_LOGI(TAG, "Read a message from the queue...");
-        //     example_espnow_event_send_cb_t *send_cb = &evt.info.send_cb;
-
-        //     ESP_LOGD(TAG, "Sent data to "MACSTR", status1: %d", MAC2STR(send_cb->mac_addr), send_cb->status);
-        // }
         vTaskDelay(1000/portTICK_PERIOD_MS);
 
     }
@@ -453,8 +385,8 @@ static esp_err_t example_espnow_init(void)
     memcpy(send_param->dest_mac, broadcast_mac, ESP_NOW_ETH_ALEN);
     example_espnow_data_prepare(send_param);
     
-    xTaskCreate(example_espnow_task, "example_espnow_task", 8192, NULL, 4, NULL);
-    xTaskCreatePinnedToCore(beacon_task, "beacon", 8192, NULL, 3, NULL, 0);
+    xTaskCreate(main_task, "main", 4096, NULL, 4, NULL);
+    xTaskCreatePinnedToCore(beacon_task, "beacon", 4096, NULL, 3, NULL, 0);
 
     return ESP_OK;
 }

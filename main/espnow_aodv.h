@@ -9,7 +9,7 @@
 #include "espnow_aodv.h"
 
 #define AODV_MAX_ROUTES             16
-#define AODV_ROUTE_TIMEOUT_MS       30000
+#define AODV_ROUTE_TIMEOUT_MS       15000
 
 #define AODV_NET_DIAMETER            35
 #define AODV_NODE_TRAVERSAL_TIME     40      // milliseconds
@@ -69,6 +69,7 @@ typedef struct {
 
 void example_espnow_deinit(example_espnow_send_param_t *send_param);
 void aodv_espnow_data_prepare(example_espnow_send_param_t *send_param);
+void aodv_maintenance_task(void* pvParameter);
 
 void aodv_send_rreq(void* pvParameter);
 int aodv_send_rrep(
