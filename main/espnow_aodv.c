@@ -27,6 +27,7 @@ static uint8_t local_mac[ESP_NOW_ETH_ALEN];
 static uint32_t local_seq_num = 0;
 static aodv_route_t routing_table[AODV_MAX_ROUTES];
 static aodv_rreq_cache_entry_t rreq_cache[AODV_MAX_ROUTES];
+static aodv_data_t buffer;
 
 extern QueueHandle_t s_example_espnow_queue;
 extern uint16_t s_example_espnow_seq[EXAMPLE_ESPNOW_DATA_MAX];
@@ -35,6 +36,8 @@ extern uint16_t s_example_espnow_seq[EXAMPLE_ESPNOW_DATA_MAX];
 int esp_handle_user_input(int argc, char **argv)
 {
     aodv_send_rreq(argv[1]);
+    aodv_send_data(argv[1]);
+    return 0;
 }
 
 
@@ -60,13 +63,13 @@ static void print_table_task(void *pvParameter)
                 int64_t remaining_time = (routing_table[i].expiry_time - now) / 1000;
                 if (remaining_time < 0) remaining_time = 0;
 
-                ESP_LOGI(TAG, "| "MACSTR" | "MACSTR" | %3d | %5" PRIu32 " | %8" PRId64 " | %s  |",
+                /*ESP_LOGI(TAG, "| "MACSTR" | "MACSTR" | %3d | %5 PRIu32 " | %8" PRId64 " | %s  |",
                         MAC2STR(routing_table[i].dest),
                         MAC2STR(routing_table[i].next_hop),
                         routing_table[i].hop_count,
                         routing_table[i].dest_seq,
                         remaining_time,
-                        routing_table[i].valid ? "TRUE " : "FALSE");
+                        routing_table[i].valid ? "TRUE " : "FALSE");*/
             }
         }
         if (empty) {
@@ -173,6 +176,28 @@ void aodv_update_route(
     }
 }
 
+void aodv_update_route2(
+    const uint8_t *dest,
+    uint32_t dest_seq
+) {
+    aodv_route_t *route = aodv_find_route(dest);
+
+    if (!route) {
+        route = aodv_alloc_route_entry();
+        if (!route) return; // routing table full
+    }
+
+    if (!route->valid ||
+        dest_seq > route->dest_seq) {
+            
+        route->dest_seq = dest_seq;
+        route->valid = true;
+        route->expiry_time = esp_timer_get_time() + AODV_ROUTE_TIMEOUT_MS * 1000;
+        ESP_LOGI(TAG, "Hop: %" PRIu8 " | Seq: %" PRIu32 " | Expiry: %" PRId64 " | Valid: %s | Dest: "MACSTR" | Next Hop: "MACSTR"", 
+            route->hop_count, route->dest_seq, route->expiry_time, route->valid ? "true" : "false", MAC2STR(route->dest), MAC2STR(route->next_hop));
+    }
+}
+
 // static void aodv_send_msg(void* pvParameter) {
 //     example_espnow_send_param_t *send_param = (example_espnow_send_param_t *)pvParameter;
 //     ESP_LOGI(TAG, "Sending an RREQ to "MACSTR" ...", MAC2STR(send_param->dest_mac));
@@ -233,6 +258,56 @@ void aodv_send_rreq(void* pvParameter)
     free(send_param->buffer);
     free(send_param);
     // vTaskDelete(NULL);
+}
+void aodv_send_data(void* pvParameter)
+{
+
+    ESP_LOGI(TAG, "Sending RDATA message to "MACSTR".", MAC2STR((uint8_t*)pvParameter));
+    example_espnow_send_param_t *send_param;
+    send_param = malloc(sizeof(example_espnow_send_param_t));
+    if (send_param == NULL) {
+        ESP_LOGE(TAG, "Malloc send parameter fail");
+    }
+    memset(send_param, 0, sizeof(example_espnow_send_param_t));
+    send_param->len = sizeof(example_espnow_data_t) + sizeof(aodv_data_t);
+    send_param->buffer = malloc(send_param->len);
+    if (send_param->buffer == NULL) {
+        ESP_LOGE(TAG, "Malloc send buffer fail");
+        free(send_param);
+    }
+    example_espnow_data_t *buf = (example_espnow_data_t *)send_param->buffer;
+
+    aodv_data_t rdata = {
+        .type = AODV_DATA,
+        .dest_seq = 0 // TODO: must be taken from the old entry in routing table if it is already there
+    };
+    // set the final destination
+    memcpy(rdata.dest, (uint8_t*)pvParameter, ESP_NOW_ETH_ALEN);
+    memcpy(rdata.message, "Hello", 5);
+    memcpy(buf->payload, &rdata, sizeof(rdata));
+
+    // memcpy(buf->payload, "HELLO THIS IS A RREQ MESSAGE", 28);
+    aodv_route_t *route = aodv_find_route(rdata.dest); 
+    if(route != NULL){
+
+    memcpy(send_param->dest_mac, route->next_hop, ESP_NOW_ETH_ALEN);
+    aodv_espnow_data_prepare(send_param);
+
+    // vTaskDelay(2000 / portTICK_PERIOD_MS);
+    ESP_LOGI(TAG, "Sending data...");
+    if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
+        ESP_LOGE(TAG, "Send error");
+        free(send_param->buffer);
+        free(send_param);
+        // vTaskDelete(NULL);
+    }
+    free(send_param->buffer);
+    free(send_param);
+    // vTaskDelete(NULL);
+    }
+    else{
+        buffer = rdata;
+    }
 }
 
 int aodv_send_rrep(
@@ -470,6 +545,7 @@ int aodv_handle_rreq(const uint8_t *sender, aodv_rreq_t *rreq)
 int aodv_handle_rrep(const uint8_t *sender, aodv_rrep_t *rrep)
 {
     if (mac_addr_equal(rrep->dest, local_mac)) {
+        aodv_send_data(buffer.dest);
         return ESP_OK;
     }
 
@@ -548,6 +624,69 @@ int aodv_handle_rerr(const uint8_t *sender, aodv_rerr_t *rerr)
                      (uint8_t *)rerr,
                      sizeof(*rerr));
     }
+    return ESP_OK;
+}
+
+int aodv_handle_data(const uint8_t *sender, aodv_data_t *rdata){
+    if (mac_addr_equal(rdata->dest, local_mac)) {
+        ESP_LOGI(TAG, "MESSAGE: "MACSTR"", MAC2STR(rdata->message));
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG,
+        "RDATA: Inserting Route:\n"
+        "  sender      = "MACSTR"\n"
+        "  dest        = "MACSTR"\n"
+        "  me        = "MACSTR"\n",
+        MAC2STR(sender),
+        MAC2STR(rdata->dest),
+        MAC2STR(local_mac)
+    );
+    aodv_update_route2(
+        rdata->dest,
+        rdata->dest_seq
+    );
+    if (1) {
+        // TODO: can remove this reverse_route function
+        aodv_route_t* rroute = aodv_get_reverse_route(rdata->dest);
+        if (rroute == NULL) {
+            //ESP_LOGE(TAG, "Non existing reverse route to "MACSTR"", MAC2STR(rdata->origin));
+            return ESP_FAIL;
+        }
+
+        example_espnow_send_param_t *send_param;
+        /* Initialize sending parameters. */
+        send_param = malloc(sizeof(example_espnow_send_param_t));
+        if (send_param == NULL) {
+            ESP_LOGE(TAG, "Malloc send parameter fail");
+            return ESP_FAIL;
+        }
+        memset(send_param, 0, sizeof(example_espnow_send_param_t));
+        send_param->len = sizeof(example_espnow_data_t) + sizeof(aodv_data_t);
+        send_param->buffer = malloc(send_param->len);
+        if (send_param->buffer == NULL) {
+            ESP_LOGE(TAG, "Malloc send buffer fail");
+            free(send_param);
+            return ESP_FAIL;
+        }
+        example_espnow_data_t *buf = (example_espnow_data_t *)send_param->buffer;
+
+        memcpy(buf->payload, rdata, sizeof(*rdata));
+
+        memcpy(send_param->dest_mac, rroute->next_hop, ESP_NOW_ETH_ALEN);
+        aodv_espnow_data_prepare(send_param);
+
+        ESP_LOGI(TAG, "Forwarding RDATA msg to "MACSTR"", MAC2STR(send_param->dest_mac));
+        if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
+            ESP_LOGE(TAG, "Send error");
+            free(send_param->buffer);
+            free(send_param);
+            return ESP_FAIL;
+        }
+        free(send_param->buffer);
+        free(send_param);
+        return ESP_OK;
+    } 
     return ESP_OK;
 }
 

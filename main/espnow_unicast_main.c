@@ -52,7 +52,7 @@ void init_console(void)
 {
     esp_console_repl_t *repl = NULL;
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    repl_config.prompt = PROMPT_STR "-->";
+    //repl_config.prompt = PROMPT_STR "-->"; //todo hier kein plan. du ne idee noah?
 
     esp_console_register_help_command();
     const esp_console_cmd_t send_cmd = {
@@ -258,6 +258,9 @@ void handle_aodv_msg(const uint8_t* src_addr,
         case AODV_RERR:
             aodv_handle_rerr(src_addr, (aodv_rerr_t*)data);
             break;
+        case AODV_DATA:
+            aodv_handle_data(src_addr, (aodv_data_t*)data);
+            break;
     }
 }
 
@@ -355,6 +358,16 @@ static void main_task(void *pvParameter)
                         MAC2STR(rrep->dest),
                         rrep->dest_seq,
                         MAC2STR(rrep->origin)
+                    );
+                }
+                else if(payload[0] == AODV_DATA) {
+                    handle_aodv_msg(recv_cb->mac_addr, payload, recv_cb->data_len - sizeof(example_espnow_data_t));
+                    aodv_data_t* rdata = (aodv_data_t*) payload;
+                    ESP_LOGI(TAG, "RREP >>> Type: %d | Dest: "MACSTR" (Seq: %" PRIu32 ") | Message: "MACSTR" ",
+                        rdata->type,
+                        MAC2STR(rdata->dest),
+                        rdata->dest_seq,
+                        MAC2STR(rdata->message)
                     );
                 }
             } else {

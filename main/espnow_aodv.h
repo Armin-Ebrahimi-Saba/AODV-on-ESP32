@@ -28,7 +28,8 @@ typedef struct {
 typedef enum {
     AODV_RREQ = 1,
     AODV_RREP = 2,
-    AODV_RERR = 3
+    AODV_RERR = 3,
+    AODV_DATA = 4
 } aodv_msg_type_t;
 
 // based on RFC 3561 
@@ -51,6 +52,13 @@ typedef struct {
 } __attribute__((packed)) aodv_rrep_t;
 
 typedef struct {
+    uint8_t type;               // AODV_DATA
+    uint32_t dest_seq;          // destination sequence number
+    uint8_t dest[ESP_NOW_ETH_ALEN];          // destination
+    uint8_t message[5];
+} __attribute__((packed)) aodv_data_t;
+
+typedef struct {
     uint8_t type;              // AODV_RERR
     uint8_t dest[ESP_NOW_ETH_ALEN];           // unreachable destination
     uint32_t dest_seq;
@@ -69,9 +77,10 @@ typedef struct {
 
 void example_espnow_deinit(example_espnow_send_param_t *send_param);
 void aodv_espnow_data_prepare(example_espnow_send_param_t *send_param);
-void aodv_maintenance_task(void* pvParameter);
+void aodv_maintenance_task(void* pvParameter);int esp_handle_user_input(int argc, char **argv);
 
 void aodv_send_rreq(void* pvParameter);
+void aodv_send_data(void* pvParameter);
 int aodv_send_rrep(
     const uint8_t *next_hop,
     uint8_t *originator,
@@ -84,6 +93,7 @@ int aodv_send_rerr(uint8_t *dest);
 int aodv_handle_rreq(const uint8_t *sender, aodv_rreq_t *rreq);
 int aodv_handle_rrep(const uint8_t *sender, aodv_rrep_t *rrep);
 int aodv_handle_rerr(const uint8_t *sender, aodv_rerr_t *rerr);
+int aodv_handle_data(const uint8_t *sender, aodv_data_t *rdata);
 
 void aodv_init();
 
