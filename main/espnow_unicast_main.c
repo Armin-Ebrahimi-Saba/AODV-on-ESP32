@@ -28,6 +28,8 @@
 #include "esp_timer.h"
 #include "esp_task_wdt.h"
 
+#include "esp_console.h"
+
 #include "espnow_example.h"
 #include "espnow_aodv.h"
 
@@ -43,6 +45,41 @@ static const char *TAG = "espnow_receiver";
 uint16_t s_example_espnow_seq[EXAMPLE_ESPNOW_DATA_MAX] = { 0, 0 };
 
 static uint8_t local_mac[ESP_NOW_ETH_ALEN];
+
+
+
+void init_console(void)
+{
+    esp_console_repl_t *repl = NULL;
+    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    repl_config.prompt = PROMPT_STR "-->";
+
+    esp_console_register_help_command();
+    const esp_console_cmd_t send_cmd = {
+        .command = "send",
+        .help = "Sendet eine AODV Nachricht",
+        .hint = "<mac> <msg>",
+        .func = esp_handle_user_input};
+    ESP_ERROR_CHECK(esp_console_cmd_register(&send_cmd));
+    // register_system_common();
+
+    // #if SOC_LIGHT_SLEEP_SUPPORTED
+    //     register_system_light_sleep();
+    // #endif
+    // #if SOC_LIGHT_DEEP_SUPPORTED
+    //     register_system_deep_sleep();
+    // #endif
+
+#if defined(CONFIG_ESP_CONSOLE_UART_DEFAULT) || defined(CONFIG_ESP_CONSOLE_UART_CUSTOM)
+    esp_console_dev_uart_config_t hw_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw_config, &repl_config, &repl));
+#endif
+
+    ESP_ERROR_CHECK(esp_console_start_repl(repl));
+}
+
+
+
 
 void example_espnow_deinit(example_espnow_send_param_t *send_param);
 
@@ -388,6 +425,7 @@ static esp_err_t example_espnow_init(void)
     xTaskCreate(main_task, "main", 4096, NULL, 4, NULL);
     xTaskCreatePinnedToCore(beacon_task, "beacon", 4096, NULL, 3, NULL, 0);
 
+    init_console();
     return ESP_OK;
 }
 

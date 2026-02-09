@@ -32,6 +32,12 @@ extern QueueHandle_t s_example_espnow_queue;
 extern uint16_t s_example_espnow_seq[EXAMPLE_ESPNOW_DATA_MAX];
 
 
+int esp_handle_user_input(int argc, char **argv)
+{
+    aodv_send_rreq(argv[1]);
+}
+
+
 static void print_table_task(void *pvParameter)
 {
     while (1) {
