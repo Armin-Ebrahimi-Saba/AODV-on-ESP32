@@ -35,6 +35,8 @@
 
 #define ESPNOW_MAXDELAY 512
 
+#define PROMPT_STR CONFIG_IDF_TARGET
+
 static const char *TAG = "espnow_receiver";
 
 /* static */ QueueHandle_t s_example_espnow_queue;
@@ -52,7 +54,7 @@ void init_console(void)
 {
     esp_console_repl_t *repl = NULL;
     esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
-    //repl_config.prompt = PROMPT_STR "-->"; //todo hier kein plan. du ne idee noah?
+    repl_config.prompt = PROMPT_STR "-->"; //todo hier kein plan. du ne idee noah?
 
     esp_console_register_help_command();
     const esp_console_cmd_t send_cmd = {
@@ -363,11 +365,11 @@ static void main_task(void *pvParameter)
                 else if(payload[0] == AODV_DATA) {
                     handle_aodv_msg(recv_cb->mac_addr, payload, recv_cb->data_len - sizeof(example_espnow_data_t));
                     aodv_data_t* rdata = (aodv_data_t*) payload;
-                    ESP_LOGI(TAG, "RREP >>> Type: %d | Dest: "MACSTR" (Seq: %" PRIu32 ") | Message: "MACSTR" ",
+                    ESP_LOGI(TAG, "RREP >>> Type: %d | Dest: "MACSTR" (Seq: %" PRIu32 ") | Message: %s ",
                         rdata->type,
                         MAC2STR(rdata->dest),
                         rdata->dest_seq,
-                        MAC2STR(rdata->message)
+                        rdata->message
                     );
                 }
             } else {

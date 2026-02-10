@@ -35,8 +35,18 @@ extern uint16_t s_example_espnow_seq[EXAMPLE_ESPNOW_DATA_MAX];
 
 int esp_handle_user_input(int argc, char **argv)
 {
-    aodv_send_rreq(argv[1]);
-    aodv_send_data(argv[1]);
+
+    uint8_t adr[ESP_NOW_ETH_ALEN];
+    sscanf(argv[1], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+           &adr[0],
+           &adr[1],
+           &adr[2],
+           &adr[3],
+           &adr[4],
+           &adr[5]);
+
+    ESP_LOGI(TAG, "adresse: ...%d...", adr);
+    aodv_send_data(adr);
     return 0;
 }
 
@@ -55,21 +65,21 @@ static void print_table_task(void *pvParameter)
 
         for (int i = 0; i < AODV_MAX_ROUTES; i++) {
             // Option: Remove the 'if' to see invalid/empty slots too
-            // if (routing_table[i].valid) {
-            if (1) {
+             if (routing_table[i].valid) {
+            //if (1) {
                 empty = false;
                 
                 // Calculate remaining time in milliseconds
                 int64_t remaining_time = (routing_table[i].expiry_time - now) / 1000;
                 if (remaining_time < 0) remaining_time = 0;
 
-                /*ESP_LOGI(TAG, "| "MACSTR" | "MACSTR" | %3d | %5 PRIu32 " | %8" PRId64 " | %s  |",
+                ESP_LOGI(TAG, "| "MACSTR" | "MACSTR" | %3d | %5" PRIu32 " | %8" PRId64 " | %s  |",
                         MAC2STR(routing_table[i].dest),
                         MAC2STR(routing_table[i].next_hop),
                         routing_table[i].hop_count,
                         routing_table[i].dest_seq,
                         remaining_time,
-                        routing_table[i].valid ? "TRUE " : "FALSE");*/
+                        routing_table[i].valid ? "TRUE " : "FALSE");
             }
         }
         if (empty) {
@@ -157,10 +167,12 @@ void aodv_update_route(
     aodv_route_t *route = aodv_find_route(dest);
 
     if (!route) {
-        route = aodv_alloc_route_entry();
-        if (!route) return; // routing table full
-    }
 
+        route = aodv_alloc_route_entry();
+        if (!route){
+         return; // routing table full
+        }
+    }
     if (!route->valid ||
         dest_seq > route->dest_seq ||
         (dest_seq == route->dest_seq && hop_count < route->hop_count)) {
@@ -291,6 +303,7 @@ void aodv_send_data(void* pvParameter)
     if(route != NULL){
 
     memcpy(send_param->dest_mac, route->next_hop, ESP_NOW_ETH_ALEN);
+
     aodv_espnow_data_prepare(send_param);
 
     // vTaskDelay(2000 / portTICK_PERIOD_MS);
@@ -307,6 +320,7 @@ void aodv_send_data(void* pvParameter)
     }
     else{
         buffer = rdata;
+        aodv_send_rreq(rdata.dest);
     }
 }
 
@@ -629,7 +643,7 @@ int aodv_handle_rerr(const uint8_t *sender, aodv_rerr_t *rerr)
 
 int aodv_handle_data(const uint8_t *sender, aodv_data_t *rdata){
     if (mac_addr_equal(rdata->dest, local_mac)) {
-        ESP_LOGI(TAG, "MESSAGE: "MACSTR"", MAC2STR(rdata->message));
+        ESP_LOGI(TAG, "MESSAGE: %s", rdata->message);
         return ESP_OK;
     }
 
