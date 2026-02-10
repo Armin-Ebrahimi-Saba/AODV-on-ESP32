@@ -260,7 +260,7 @@ void aodv_send_rreq(void* pvParameter)
     aodv_espnow_data_prepare(send_param);
 
     // vTaskDelay(2000 / portTICK_PERIOD_MS);
-    ESP_LOGI(TAG, "Sending beacon...");
+    // ESP_LOGI(TAG, "Sending beacon...");
     if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
         ESP_LOGE(TAG, "Send error");
         free(send_param->buffer);
@@ -334,19 +334,19 @@ int aodv_send_rrep(
 {
     ESP_LOGI(TAG,
         "Sending an RREP:\n"
-        "  next_hop    = "MACSTR"\n"
+        "  next hop    = "MACSTR"\n"
         "  originator  = "MACSTR"\n"
-        "  dest        = "MACSTR"\n"
-        "  dest_seq    = %" PRIu32 "\n"
-        "  hop_count   = %u",
+        "  dest        = "MACSTR"\n",
+        // "  dest_seq    = %" PRIu32 "\n"
+        // "  hop_count   = %u",
         MAC2STR(next_hop),
-        MAC2STR(originator),
         MAC2STR(dest),
-        dest_seq,
-        hop_count
+        MAC2STR(originator)
+        // dest_seq,
+        // hop_count
     );
 
-    ESP_LOGI(TAG, "Sending an RREP message to "MACSTR".", MAC2STR(originator));
+    // ESP_LOGI(TAG, "Sending an RREP message to "MACSTR".", MAC2STR(originator));
     example_espnow_send_param_t *send_param;
     /* Initialize sending parameters. */
     send_param = malloc(sizeof(example_espnow_send_param_t));
@@ -460,18 +460,6 @@ static bool aodv_is_rreq_cached(uint8_t *orig_addr, uint32_t rreq_id) {
 // sender is the previous hop and the originator of the rreq!
 int aodv_handle_rreq(const uint8_t *sender, aodv_rreq_t *rreq)
 {
-
-    ESP_LOGI(TAG,
-        "Handling an RREQ:\n"
-        "  sender      = "MACSTR"\n"
-        "  originator  = "MACSTR"\n"
-        "  dest        = "MACSTR"\n",
-        MAC2STR(sender),
-        MAC2STR(rreq->src),
-        MAC2STR(rreq->dest)
-    );
-
-
     // ignore this if it is from us
     if (mac_addr_equal(rreq->src, local_mac)) {
         ESP_LOGD(TAG, "This RREQ msg is from us, ignoring");
@@ -484,19 +472,33 @@ int aodv_handle_rreq(const uint8_t *sender, aodv_rreq_t *rreq)
         return ESP_OK;
     }    
 
+    ESP_LOGI(TAG,
+        "Handling an RREQ:\n"
+        "  sender      = "MACSTR"\n"
+        "  originator  = "MACSTR"\n"
+        "  dest        = "MACSTR"\n",
+        MAC2STR(sender),
+        MAC2STR(rreq->src),
+        MAC2STR(rreq->dest)
+    );
+
     aodv_cache_rreq(rreq->src, rreq->rreq_id);
     rreq->hop_count++;
 
+    // ESP_LOGI(TAG,
+    //     "RREQ: Inserting Route:\n"
+    //     "  sender      = "MACSTR"\n"
+    //     "  originator  = "MACSTR"\n"
+    //     "  dest        = "MACSTR"\n"
+    //     "  me        = "MACSTR"\n",
+    //     MAC2STR(sender),
+    //     MAC2STR(rreq->dest),
+    //     MAC2STR(rreq->src),
+    //     MAC2STR(local_mac)
+    // );
+
     ESP_LOGI(TAG,
-        "RREQ: Inserting Route:\n"
-        "  sender      = "MACSTR"\n"
-        "  originator  = "MACSTR"\n"
-        "  dest        = "MACSTR"\n"
-        "  me        = "MACSTR"\n",
-        MAC2STR(sender),
-        MAC2STR(rreq->dest),
-        MAC2STR(rreq->src),
-        MAC2STR(local_mac)
+        "RREQ>>> Inserting Route:"
     );
     aodv_update_route(
         rreq->src,
@@ -550,7 +552,7 @@ int aodv_handle_rreq(const uint8_t *sender, aodv_rreq_t *rreq)
         free(send_param);
         return ESP_FAIL;
     }
-    ESP_LOGI(TAG, "Forwarding RREQ msg to "MACSTR"", MAC2STR(send_param->dest_mac));
+    // ESP_LOGI(TAG, "Forwarding RREQ msg to "MACSTR"", MAC2STR(send_param->dest_mac));
     free(send_param->buffer);
     free(send_param);
     return ESP_OK;
@@ -564,15 +566,28 @@ int aodv_handle_rrep(const uint8_t *sender, aodv_rrep_t *rrep)
     }
 
     ESP_LOGI(TAG,
-        "RREP: Inserting Route:\n"
+        "Handling an RREP:\n"
         "  sender      = "MACSTR"\n"
         "  originator  = "MACSTR"\n"
-        "  dest        = "MACSTR"\n"
-        "  me        = "MACSTR"\n",
+        "  dest        = "MACSTR"\n",
         MAC2STR(sender),
-        MAC2STR(rrep->origin),
         MAC2STR(rrep->dest),
-        MAC2STR(local_mac)
+        MAC2STR(rrep->origin)
+    );
+
+    // ESP_LOGI(TAG,
+    //     "RREP: Inserting Route:\n"
+    //     "  sender      = "MACSTR"\n"
+    //     "  originator  = "MACSTR"\n"
+    //     "  dest        = "MACSTR"\n"
+    //     "  me        = "MACSTR"\n",
+    //     MAC2STR(sender),
+    //     MAC2STR(rrep->origin),
+    //     MAC2STR(rrep->dest),
+    //     MAC2STR(local_mac)
+    // );
+    ESP_LOGI(TAG,
+        "RREP>>> Inserting Route:"
     );
     rrep->hop_count++;
     aodv_update_route(
@@ -647,14 +662,17 @@ int aodv_handle_data(const uint8_t *sender, aodv_data_t *rdata){
         return ESP_OK;
     }
 
+    // ESP_LOGI(TAG,
+    //     "RDATA: Inserting Route:\n"
+    //     "  sender      = "MACSTR"\n"
+    //     "  dest        = "MACSTR"\n"
+    //     "  me        = "MACSTR"\n",
+    //     MAC2STR(sender),
+    //     MAC2STR(rdata->dest),
+    //     MAC2STR(local_mac)
+    // );
     ESP_LOGI(TAG,
-        "RDATA: Inserting Route:\n"
-        "  sender      = "MACSTR"\n"
-        "  dest        = "MACSTR"\n"
-        "  me        = "MACSTR"\n",
-        MAC2STR(sender),
-        MAC2STR(rdata->dest),
-        MAC2STR(local_mac)
+        "RDATA>>> Inserting Route:"
     );
     aodv_update_route2(
         rdata->dest,
@@ -715,7 +733,7 @@ void aodv_init() {
 }
 
 static void aodv_periodic_task() {
-    ESP_LOGI(TAG, "Running the aodv maintenance task");
+    // ESP_LOGI(TAG, "Running the aodv maintenance task");
     int64_t now = esp_timer_get_time();
     // Check route timeouts
     for (size_t i = 0; i < AODV_MAX_ROUTES; i++) {

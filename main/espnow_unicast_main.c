@@ -143,7 +143,7 @@ static void example_espnow_recv_cb(const esp_now_recv_info_t *recv_info, const u
 
     evt.id = EXAMPLE_ESPNOW_RECV_CB;
     memcpy(recv_cb->mac_addr, mac_addr, ESP_NOW_ETH_ALEN);
-    ESP_LOGI(TAG, "Received a packet from "MACSTR"", MAC2STR(mac_addr));
+    // ESP_LOGI(TAG, "Received a packet from "MACSTR"", MAC2STR(mac_addr));
     recv_cb->data = malloc(len);
     if (recv_cb->data == NULL) {
         ESP_LOGE(TAG, "Malloc receive data fail");
@@ -221,7 +221,7 @@ uint8_t add_peer(uint8_t* mac_addr, bool encrypt)
         }
         memcpy(peer->peer_addr, mac_addr, ESP_NOW_ETH_ALEN);
         ESP_ERROR_CHECK( esp_now_add_peer(peer) );
-        ESP_LOGI(TAG, "See peer for the first time and add it to my list.");
+        // ESP_LOGI(TAG, "See peer for the first time and add it to my list.");
         free(peer);
         return 1;
     } else {
@@ -288,7 +288,7 @@ static void beacon_task(void* pvParameter) {
     example_espnow_data_prepare(send_param);
     while (1) {
         vTaskDelay(7000 / portTICK_PERIOD_MS);
-        ESP_LOGI(TAG, "Sending beacon...");
+        // ESP_LOGI(TAG, "Sending beacon...");
         if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
             ESP_LOGE(TAG, "Send error");
             free(send_param->buffer);
@@ -306,7 +306,7 @@ static void main_task(void *pvParameter)
     int ret;
     bool is_broadcast = false;
 
-    uint8_t local_mac[6];
+    uint8_t a_mac[6] = { 0x34, 0x85, 0x18, 0xb9, 0x1b, 0x9c };
     uint8_t other_mac[6] = { 0x34, 0x85, 0x18, 0xb9, 0x1a, 0xb4 };
     esp_err_t err = esp_wifi_get_mac(WIFI_IF_STA, local_mac);
 
@@ -318,7 +318,7 @@ static void main_task(void *pvParameter)
             ret = example_espnow_data_parse(recv_cb->data, recv_cb->data_len, &recv_seq, &payload);
             free(recv_cb->data);
             if (ret == EXAMPLE_ESPNOW_DATA_BROADCAST) {
-                ESP_LOGI(TAG, "Receive %dth broadcast data from: "MACSTR", len: %d, data: %s", recv_seq, MAC2STR(recv_cb->mac_addr), recv_cb->data_len, payload);
+                // ESP_LOGI(TAG, "Receive %dth broadcast data from: "MACSTR", len: %d, data: %s", recv_seq, MAC2STR(recv_cb->mac_addr), recv_cb->data_len, payload);
                 
                 /*********************************************/
                 /*************** STEP 1 **********************/
@@ -330,42 +330,50 @@ static void main_task(void *pvParameter)
                 if (is_new_peer != 0) {
                     uint8_t* mac_addr = malloc(ESP_NOW_ETH_ALEN);
                     memcpy(mac_addr, recv_cb->mac_addr, ESP_NOW_ETH_ALEN);
-                    ESP_LOGI(TAG, "Broadcasting RREQ to find a route to "MACSTR"", MAC2STR(recv_cb->mac_addr));
+                    // ESP_LOGI(TAG, "Broadcasting RREQ to find a route to "MACSTR"", MAC2STR(recv_cb->mac_addr));
                     // xTaskCreatePinnedToCore(aodv_send_rreq, "aodv_send_rreq", 4096, mac_addr, 5, NULL, 0);
                     aodv_send_rreq(mac_addr);
                     free(mac_addr);
                 }
 
+                if ((memcmp(local_mac, a_mac, ESP_NOW_ETH_ALEN) == 0 &&
+                    memcmp(other_mac, recv_cb->mac_addr, ESP_NOW_ETH_ALEN) == 0) ||
+                    (memcmp(local_mac, other_mac, ESP_NOW_ETH_ALEN) == 0 && 
+                        memcmp(a_mac, recv_cb->mac_addr, ESP_NOW_ETH_ALEN) == 0)) {
+                    // ESP_LOGI(TAG, "This message was ignored for the sake of simulation.");
+                    continue;
+                }
+
                 if (payload[0] == AODV_RREQ) {
                     handle_aodv_msg(recv_cb->mac_addr, payload, recv_cb->data_len - sizeof(example_espnow_data_t));
-                    aodv_rreq_t* rreq = (aodv_rreq_t*) payload;
-                    ESP_LOGI(TAG, "RREQ >>> Type: %d | Hop: %d | ID: %" PRIu32 " | Src: "MACSTR" (Seq: %" PRIu32 ") | Dest: "MACSTR" (Seq: %" PRIu32 ")",
-                        rreq->type,
-                        rreq->hop_count,
-                        rreq->rreq_id,
-                        MAC2STR(rreq->src),
-                        rreq->src_seq,
-                        MAC2STR(rreq->dest),
-                        rreq->dest_seq);
+                    // aodv_rreq_t* rreq = (aodv_rreq_t*) payload;
+                    // ESP_LOGI(TAG, "RREQ >>> Type: %d | Hop: %d | ID: %" PRIu32 " | Src: "MACSTR" (Seq: %" PRIu32 ") | Dest: "MACSTR" (Seq: %" PRIu32 ")",
+                    //     rreq->type,
+                    //     rreq->hop_count,
+                    //     rreq->rreq_id,
+                    //     MAC2STR(rreq->src),
+                    //     rreq->src_seq,
+                    //     MAC2STR(rreq->dest),
+                    //     rreq->dest_seq);
                 }
 
             } else if (ret == EXAMPLE_ESPNOW_DATA_UNICAST) {
-                ESP_LOGI(TAG, "Receive %dth unicast data from: "MACSTR", len: %d, data: %s", recv_seq, MAC2STR(recv_cb->mac_addr), recv_cb->data_len, payload);
+                // ESP_LOGI(TAG, "Receive %dth unicast data from: "MACSTR", len: %d, data: %s", recv_seq, MAC2STR(recv_cb->mac_addr), recv_cb->data_len, payload);
                 if (payload[0] == AODV_RREP) {
                     handle_aodv_msg(recv_cb->mac_addr, payload, recv_cb->data_len - sizeof(example_espnow_data_t));
-                    aodv_rrep_t* rrep = (aodv_rrep_t*) payload;
-                    ESP_LOGI(TAG, "RREP >>> Type: %d | Hop: %d | Dest: "MACSTR" (Seq: %" PRIu32 ") | Origin: "MACSTR" ",
-                        rrep->type,
-                        rrep->hop_count,
-                        MAC2STR(rrep->dest),
-                        rrep->dest_seq,
-                        MAC2STR(rrep->origin)
-                    );
+                    // aodv_rrep_t* rrep = (aodv_rrep_t*) payload;
+                    // ESP_LOGI(TAG, "RREP >>> Type: %d | Hop: %d | Dest: "MACSTR" (Seq: %" PRIu32 ") | Origin: "MACSTR" ",
+                    //     rrep->type,
+                    //     rrep->hop_count,
+                    //     MAC2STR(rrep->dest),
+                    //     rrep->dest_seq,
+                    //     MAC2STR(rrep->origin)
+                    // );
                 }
                 else if(payload[0] == AODV_DATA) {
                     handle_aodv_msg(recv_cb->mac_addr, payload, recv_cb->data_len - sizeof(example_espnow_data_t));
                     aodv_data_t* rdata = (aodv_data_t*) payload;
-                    ESP_LOGI(TAG, "RREP >>> Type: %d | Dest: "MACSTR" (Seq: %" PRIu32 ") | Message: %s ",
+                    ESP_LOGI(TAG, "DATA >>> Type: %d | Dest: "MACSTR" (Seq: %" PRIu32 ") | Message: %s ",
                         rdata->type,
                         MAC2STR(rdata->dest),
                         rdata->dest_seq,
