@@ -66,7 +66,6 @@ static void print_table_task(void *pvParameter)
         for (int i = 0; i < AODV_MAX_ROUTES; i++) {
             // Option: Remove the 'if' to see invalid/empty slots too
              if (routing_table[i].valid) {
-            //if (1) {
                 empty = false;
                 
                 // Calculate remaining time in milliseconds
@@ -149,12 +148,9 @@ void aodv_espnow_data_prepare(example_espnow_send_param_t *send_param)
     assert(send_param->len >= sizeof(example_espnow_data_t));
 
     buf->type = IS_BROADCAST_ADDR(send_param->dest_mac) ? EXAMPLE_ESPNOW_DATA_BROADCAST : EXAMPLE_ESPNOW_DATA_UNICAST;
-
-    // buf->type = AODV;
     buf->seq_num = s_example_espnow_seq[buf->type]++;
     buf->crc = 0;
     /* Fill all remaining bytes after the data with random values */
-    //esp_fill_random(buf->payload, send_param->len - sizeof(example_espnow_data_t));
     buf->crc = esp_crc16_le(UINT16_MAX, (uint8_t const *)buf, send_param->len);
 }
 
@@ -210,19 +206,6 @@ void aodv_update_route2(
     }
 }
 
-// static void aodv_send_msg(void* pvParameter) {
-//     example_espnow_send_param_t *send_param = (example_espnow_send_param_t *)pvParameter;
-//     ESP_LOGI(TAG, "Sending an RREQ to "MACSTR" ...", MAC2STR(send_param->dest_mac));
-//     if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
-//         ESP_LOGE(TAG, "Send error");
-//         free(send_param->buffer);
-//         free(send_param);
-//         // return ESP_FAIL;
-//     }
-//     vTaskDelete(NULL);
-// }
-
-
 void aodv_send_rreq(void* pvParameter)
 {
     static uint32_t rreq_id = 0;
@@ -255,21 +238,16 @@ void aodv_send_rreq(void* pvParameter)
     memcpy(rreq.dest, (uint8_t*)pvParameter, ESP_NOW_ETH_ALEN);
     memcpy(buf->payload, &rreq, sizeof(rreq));
 
-    // memcpy(buf->payload, "HELLO THIS IS A RREQ MESSAGE", 28);
     memcpy(send_param->dest_mac, broadcast_mac, ESP_NOW_ETH_ALEN);
     aodv_espnow_data_prepare(send_param);
 
-    // vTaskDelay(2000 / portTICK_PERIOD_MS);
-    // ESP_LOGI(TAG, "Sending beacon...");
     if (esp_now_send(send_param->dest_mac, send_param->buffer, send_param->len) != ESP_OK) {
         ESP_LOGE(TAG, "Send error");
         free(send_param->buffer);
         free(send_param);
-        // vTaskDelete(NULL);
     }
     free(send_param->buffer);
     free(send_param);
-    // vTaskDelete(NULL);
 }
 void aodv_send_data(void* pvParameter)
 {
@@ -337,16 +315,11 @@ int aodv_send_rrep(
         "  next hop    = "MACSTR"\n"
         "  originator  = "MACSTR"\n"
         "  dest        = "MACSTR"\n",
-        // "  dest_seq    = %" PRIu32 "\n"
-        // "  hop_count   = %u",
         MAC2STR(next_hop),
         MAC2STR(dest),
         MAC2STR(originator)
-        // dest_seq,
-        // hop_count
     );
 
-    // ESP_LOGI(TAG, "Sending an RREP message to "MACSTR".", MAC2STR(originator));
     example_espnow_send_param_t *send_param;
     /* Initialize sending parameters. */
     send_param = malloc(sizeof(example_espnow_send_param_t));
@@ -485,18 +458,6 @@ int aodv_handle_rreq(const uint8_t *sender, aodv_rreq_t *rreq)
     aodv_cache_rreq(rreq->src, rreq->rreq_id);
     rreq->hop_count++;
 
-    // ESP_LOGI(TAG,
-    //     "RREQ: Inserting Route:\n"
-    //     "  sender      = "MACSTR"\n"
-    //     "  originator  = "MACSTR"\n"
-    //     "  dest        = "MACSTR"\n"
-    //     "  me        = "MACSTR"\n",
-    //     MAC2STR(sender),
-    //     MAC2STR(rreq->dest),
-    //     MAC2STR(rreq->src),
-    //     MAC2STR(local_mac)
-    // );
-
     ESP_LOGI(TAG,
         "RREQ>>> Inserting Route:"
     );
@@ -552,7 +513,6 @@ int aodv_handle_rreq(const uint8_t *sender, aodv_rreq_t *rreq)
         free(send_param);
         return ESP_FAIL;
     }
-    // ESP_LOGI(TAG, "Forwarding RREQ msg to "MACSTR"", MAC2STR(send_param->dest_mac));
     free(send_param->buffer);
     free(send_param);
     return ESP_OK;
@@ -575,17 +535,6 @@ int aodv_handle_rrep(const uint8_t *sender, aodv_rrep_t *rrep)
         MAC2STR(rrep->origin)
     );
 
-    // ESP_LOGI(TAG,
-    //     "RREP: Inserting Route:\n"
-    //     "  sender      = "MACSTR"\n"
-    //     "  originator  = "MACSTR"\n"
-    //     "  dest        = "MACSTR"\n"
-    //     "  me        = "MACSTR"\n",
-    //     MAC2STR(sender),
-    //     MAC2STR(rrep->origin),
-    //     MAC2STR(rrep->dest),
-    //     MAC2STR(local_mac)
-    // );
     ESP_LOGI(TAG,
         "RREP>>> Inserting Route:"
     );
@@ -662,15 +611,6 @@ int aodv_handle_data(const uint8_t *sender, aodv_data_t *rdata){
         return ESP_OK;
     }
 
-    // ESP_LOGI(TAG,
-    //     "RDATA: Inserting Route:\n"
-    //     "  sender      = "MACSTR"\n"
-    //     "  dest        = "MACSTR"\n"
-    //     "  me        = "MACSTR"\n",
-    //     MAC2STR(sender),
-    //     MAC2STR(rdata->dest),
-    //     MAC2STR(local_mac)
-    // );
     ESP_LOGI(TAG,
         "RDATA>>> Inserting Route:"
     );
@@ -682,7 +622,6 @@ int aodv_handle_data(const uint8_t *sender, aodv_data_t *rdata){
         // TODO: can remove this reverse_route function
         aodv_route_t* rroute = aodv_get_reverse_route(rdata->dest);
         if (rroute == NULL) {
-            //ESP_LOGE(TAG, "Non existing reverse route to "MACSTR"", MAC2STR(rdata->origin));
             return ESP_FAIL;
         }
 
@@ -733,7 +672,6 @@ void aodv_init() {
 }
 
 static void aodv_periodic_task() {
-    // ESP_LOGI(TAG, "Running the aodv maintenance task");
     int64_t now = esp_timer_get_time();
     // Check route timeouts
     for (size_t i = 0; i < AODV_MAX_ROUTES; i++) {
