@@ -55,7 +55,7 @@ typedef struct {
     uint8_t type;               // AODV_DATA
     uint32_t dest_seq;          // destination sequence number
     uint8_t dest[ESP_NOW_ETH_ALEN];          // destination
-    uint8_t message[5];
+    uint8_t message[6];
 } __attribute__((packed)) aodv_data_t;
 
 typedef struct {

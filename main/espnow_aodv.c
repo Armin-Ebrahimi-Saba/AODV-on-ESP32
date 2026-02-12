@@ -273,6 +273,7 @@ void aodv_send_data(void* pvParameter)
     };
     // set the final destination
     memcpy(rdata.dest, (uint8_t*)pvParameter, ESP_NOW_ETH_ALEN);
+    memset(rdata.message, 0, 6);
     memcpy(rdata.message, "Hello", 5);
     memcpy(buf->payload, &rdata, sizeof(rdata));
 
